@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "483054026903",
+    "project_id": "lava-ring",
+    "storage_bucket": "lava-ring.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:483054026903:android:a4c83f4869b1ab55e869d2",
+        "android_client_info": {
+          "package_name": "com.lavaring.app"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDWDHbO4ULxVZzhQX_aXkHtDnRMsxtmeaU"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
