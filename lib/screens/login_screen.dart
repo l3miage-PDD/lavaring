@@ -8,6 +8,8 @@ class LoginScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final authService = Provider.of<AuthService>(context);
+    // Store the ScaffoldMessenger before the async gap
+    final scaffoldMessenger = ScaffoldMessenger.of(context);
 
     return Scaffold(
       body: Center(
@@ -25,12 +27,14 @@ class LoginScreen extends StatelessWidget {
             ),
             const SizedBox(height: 50),
             ElevatedButton.icon(
-              icon: Image.asset('assets/google_logo.png.png', height: 24.0),
+              icon: Image.asset('assets/google_logo.png', height: 24.0),
               label: const Text('Se connecter avec Google'),
               onPressed: () async {
                 final user = await authService.signInWithGoogle();
+                // Check if the widget is still mounted before showing the SnackBar
+                if (!scaffoldMessenger.mounted) return;
                 if (user == null) {
-                  ScaffoldMessenger.of(context).showSnackBar(
+                  scaffoldMessenger.showSnackBar(
                     const SnackBar(
                       content: Text('La connexion avec Google a échoué.'),
                        backgroundColor: Colors.red,

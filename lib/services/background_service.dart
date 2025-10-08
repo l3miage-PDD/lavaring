@@ -1,61 +1,125 @@
+
 import 'dart:async';
 import 'dart:ui';
+import 'dart:developer' as developer; 
+
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter_background_service/flutter_background_service.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'dart:developer' as developer;
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
-
+import 'package:intl/intl.dart';
+import 'firestore_service.dart';
 import 'notification_service.dart';
 
 const String notificationChannelId = 'my_foreground';
 const int notificationId = 888;
-const int goalInSeconds = 60;
+const int goalInHours = 15;
+const int goalInSeconds = goalInHours * 3600;
+const int resetHour = 20; // 8 PM
+
+// Helper function outside of onStart
+DateTime getTrackingDate(DateTime dateTime) {
+  if (dateTime.hour >= resetHour) {
+    return DateTime(dateTime.year, dateTime.month, dateTime.day);
+  } else {
+    return DateTime(dateTime.year, dateTime.month, dateTime.day)
+        .subtract(const Duration(days: 1));
+  }
+}
+
+String getTrackingDateString(DateTime dt) => DateFormat('yyyy-MM-dd').format(dt);
 
 @pragma('vm:entry-point')
 void onStart(ServiceInstance service) async {
   DartPluginRegistrant.ensureInitialized();
+  developer.log('Background service started.', name: 'background_service');
 
   final notificationService = NotificationService();
   await notificationService.init();
-
+  final firestoreService = FirestoreService();
   final FlutterLocalNotificationsPlugin flutterLocalNotificationsPlugin =
       FlutterLocalNotificationsPlugin();
 
-  Timer? timer;
+  String userId = '';
   bool isRunning = false;
-  int totalSeconds = 0;
-  DateTime? startTime;
+  DateTime? sessionStartTime;
+  int dailyTotalSeconds = 0;
+  List<Session> sessions = [];
   bool goalReachedNotified = false;
-
-  Future<void> loadState() async {
-    final prefs = await SharedPreferences.getInstance();
-    totalSeconds = prefs.getInt('totalSeconds') ?? 0;
-    isRunning = prefs.getBool('isRunning') ?? false;
-    goalReachedNotified = prefs.getBool('goalReachedNotified') ?? false;
-    final startTimeMillis = prefs.getInt('startTime');
-    if (startTimeMillis != null) {
-      startTime = DateTime.fromMillisecondsSinceEpoch(startTimeMillis);
-    }
-  }
+  DateTime currentTrackingDate = getTrackingDate(DateTime.now());
 
   Future<void> saveState() async {
     final prefs = await SharedPreferences.getInstance();
-    await prefs.setInt('totalSeconds', totalSeconds);
+    await prefs.setString('userId', userId);
+    await prefs.setString('trackingDate', getTrackingDateString(currentTrackingDate));
+    await prefs.setInt('dailyTotalSeconds', dailyTotalSeconds);
     await prefs.setBool('isRunning', isRunning);
     await prefs.setBool('goalReachedNotified', goalReachedNotified);
-    if (startTime != null) {
-      await prefs.setInt('startTime', startTime!.millisecondsSinceEpoch);
+    if (sessionStartTime != null) {
+      await prefs.setInt('sessionStartTime', sessionStartTime!.millisecondsSinceEpoch);
     } else {
-      await prefs.remove('startTime');
+      await prefs.remove('sessionStartTime');
     }
   }
 
-  loadState();
+  Future<void> resetDailyState(SharedPreferences prefs, {bool saveToFirestore = true}) async {
+    if (saveToFirestore && userId.isNotEmpty) {
+      final log = DailyLog(
+        date: getTrackingDateString(currentTrackingDate),
+        totalSeconds: dailyTotalSeconds,
+        sessions: sessions,
+        lastUpdate: Timestamp.now(),
+      );
+      await firestoreService.saveDailyLog(userId, log);
+      await notificationService.show(1, 'Journée terminée', 'Total: ${(dailyTotalSeconds / 3600).toStringAsFixed(2)}h');
+    }
+
+    isRunning = false;
+    sessionStartTime = null;
+    dailyTotalSeconds = 0;
+    goalReachedNotified = false;
+    sessions = [];
+    currentTrackingDate = getTrackingDate(DateTime.now());
+
+    await saveState();
+  }
+
+  Future<void> loadState() async {
+    final prefs = await SharedPreferences.getInstance();
+    userId = prefs.getString('userId') ?? '';
+    final savedDate = prefs.getString('trackingDate');
+
+    if (savedDate == getTrackingDateString(currentTrackingDate)) {
+      dailyTotalSeconds = prefs.getInt('dailyTotalSeconds') ?? 0;
+      isRunning = prefs.getBool('isRunning') ?? false;
+      goalReachedNotified = prefs.getBool('goalReachedNotified') ?? false;
+      final startTimeMillis = prefs.getInt('sessionStartTime');
+      if (startTimeMillis != null) {
+        sessionStartTime = DateTime.fromMillisecondsSinceEpoch(startTimeMillis);
+      }
+    } else {
+      await resetDailyState(prefs, saveToFirestore: true);
+    }
+    developer.log(
+      'State loaded: isRunning=$isRunning, userId=$userId, dailyTotalSeconds=$dailyTotalSeconds',
+      name: 'background_service',
+    );
+  }
+
+  // --- Service Listeners ---
+  service.on('set_user').listen((event) {
+    developer.log('Received "set_user" event.', name: 'background_service');
+    if (event != null && event['userId'] != null) {
+      userId = event['userId'];
+      loadState(); // Load state for the new user
+    }
+  });
 
   service.on('get_status').listen((event) {
-    int currentSeconds = totalSeconds;
-    if (isRunning && startTime != null) {
-      currentSeconds += DateTime.now().difference(startTime!).inSeconds;
+     developer.log('Received "get_status" event.', name: 'background_service');
+    int currentSeconds = dailyTotalSeconds;
+    if (isRunning && sessionStartTime != null) {
+      currentSeconds += DateTime.now().difference(sessionStartTime!).inSeconds;
     }
     service.invoke('update', {
       'seconds': currentSeconds,
@@ -63,107 +127,103 @@ void onStart(ServiceInstance service) async {
     });
   });
 
-  service.on('startTimer').listen((event) {
+  service.on('startTimer').listen((event) async {
+    developer.log(
+      'Received "startTimer" event. Current isRunning state: $isRunning',
+      name: 'background_service',
+    );
+    final now = DateTime.now();
+    if (getTrackingDate(now) != currentTrackingDate) {
+      developer.log('Date has changed, resetting daily state.', name: 'background_service');
+      final prefs = await SharedPreferences.getInstance();
+      await resetDailyState(prefs);
+    }
+
     if (!isRunning) {
+      developer.log('Timer is not running. Starting it now.', name: 'background_service');
       isRunning = true;
-      startTime = DateTime.now();
-      if (totalSeconds >= goalInSeconds) {
-        totalSeconds = 0;
-        goalReachedNotified = false;
-      }
-      saveState();
+      sessionStartTime = now;
+      await saveState();
+       developer.log('New state saved: isRunning=$isRunning', name: 'background_service');
+    } else {
+       developer.log('Timer is already running. Ignoring "startTimer" event.', name: 'background_service');
     }
   });
 
-  service.on('pauseTimer').listen((event) {
-    if (isRunning && startTime != null) {
-      final elapsed = DateTime.now().difference(startTime!).inSeconds;
-      totalSeconds += elapsed;
+  service.on('pauseTimer').listen((event) async {
+     developer.log(
+      'Received "pauseTimer" event. Current isRunning state: $isRunning',
+      name: 'background_service',
+    );
+    if (isRunning && sessionStartTime != null) {
+      final sessionEnd = DateTime.now();
+      final session = Session(start: sessionStartTime!, end: sessionEnd);
+      sessions.add(session);
+
+      dailyTotalSeconds += sessionEnd.difference(sessionStartTime!).inSeconds;
       isRunning = false;
-      startTime = null;
-      saveState();
+      sessionStartTime = null;
+      await saveState();
+       developer.log('Timer paused. State saved: isRunning=$isRunning', name: 'background_service');
+
+      final log = DailyLog(
+        date: getTrackingDateString(currentTrackingDate),
+        totalSeconds: dailyTotalSeconds,
+        sessions: sessions,
+        lastUpdate: Timestamp.now(),
+      );
+      await firestoreService.saveDailyLog(userId, log);
+    } else {
+        developer.log('Timer is not running. Ignoring "pauseTimer" event.', name: 'background_service');
     }
   });
 
-  service.on('resetTimer').listen((event) {
-    isRunning = false;
-    startTime = null;
-    totalSeconds = 0;
-    goalReachedNotified = false;
-    saveState();
-  });
+  // --- Main Loop ---
+  await loadState();
 
-  service.on('stopService').listen((event) {
-    timer?.cancel();
-    service.stopSelf();
-  });
+  Timer.periodic(const Duration(seconds: 1), (timer) async {
+    final now = DateTime.now();
 
-  timer = Timer.periodic(const Duration(seconds: 1), (timer) async {
-    if (isRunning && startTime != null) {
-      final currentSeconds = totalSeconds + DateTime.now().difference(startTime!).inSeconds;
-      final remaining = goalInSeconds - currentSeconds;
-      final minutes = (remaining / 60).floor();
-      final seconds = remaining % 60;
+    if (now.hour == resetHour && now.minute == 0 && getTrackingDate(now) != currentTrackingDate) {
+        final prefs = await SharedPreferences.getInstance();
+        await resetDailyState(prefs);
+        return;
+    }
 
-      flutterLocalNotificationsPlugin.show(
-        notificationId,
-        'Lava Ring - Actif',
-        'Objectif dans: ${minutes.toString().padLeft(2, '0')}:${seconds.toString().padLeft(2, '0')}',
-        const NotificationDetails(
-          android: AndroidNotificationDetails(
-            notificationChannelId,
-            'LAVA RING TIMER',
-            icon: 'ic_notification_ring', // Updated icon
-            ongoing: true,
-            priority: Priority.high,
-            importance: Importance.max,
-          ),
-        ),
-      );
+    if (isRunning && sessionStartTime != null) {
+      final currentTotal = dailyTotalSeconds + now.difference(sessionStartTime!).inSeconds;
+      final remaining = goalInSeconds - currentTotal;
+      final h = (remaining / 3600).floor();
+      final m = ((remaining % 3600) / 60).floor();
+      final s = remaining % 60;
 
-      service.invoke('update', {'seconds': currentSeconds, 'isRunning': isRunning});
-
-      if (currentSeconds >= goalInSeconds && !goalReachedNotified) {
-        await notificationService.show(
-          123, 
-          'Objectif Atteint !',
-          'Bravo ! Vous avez atteint votre objectif de 1 minute.',
-        );
-
-        isRunning = false;
-        startTime = null;
-        totalSeconds = currentSeconds;
-        goalReachedNotified = true;
-        saveState();
-        
-        flutterLocalNotificationsPlugin.show(
+      await flutterLocalNotificationsPlugin.show(
           notificationId,
-          'Objectif Atteint !',
-          'Minuteur terminé.',
+          'Lava Ring - Actif',
+          remaining > 0 ? 'Objectif dans: ${h}h ${m}m ${s}s' : 'Objectif atteint !',
           const NotificationDetails(
-            android: AndroidNotificationDetails(
-              notificationChannelId,
-              'LAVA RING TIMER',
-              icon: 'ic_notification_ring', // Updated icon
-              ongoing: false,
-            ),
-          ),
-        );
+              android: AndroidNotificationDetails(notificationChannelId, 'LAVA RING TIMER',
+                  icon: 'ic_notification_ring', ongoing: true, priority: Priority.high, importance: Importance.max)));
+
+      service.invoke('update', {'seconds': currentTotal, 'isRunning': isRunning});
+
+      if (currentTotal >= goalInSeconds && !goalReachedNotified) {
+        await notificationService.show(123, '🎯 Objectif journalier atteint !', 'Bravo! Vous avez porté l\'anneau pendant $goalInHours heures.');
+        goalReachedNotified = true;
+        await saveState();
       }
     } else {
-       flutterLocalNotificationsPlugin.show(
+       await flutterLocalNotificationsPlugin.show(
           notificationId,
           'Lava Ring',
           'Le minuteur est en pause ou arrêté.',
           const NotificationDetails(
             android: AndroidNotificationDetails(
-              notificationChannelId,
-              'LAVA RING TIMER',
-              icon: 'ic_notification_ring', // Updated icon
-              ongoing: true,
+              notificationChannelId, 'LAVA RING TIMER',
+              icon: 'ic_notification_ring', ongoing: true,
             ),
-          ),
-        );
+          ));
+      service.invoke('update', {'seconds': dailyTotalSeconds, 'isRunning': false});
     }
   });
 }
