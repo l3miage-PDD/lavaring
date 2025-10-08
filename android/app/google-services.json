@@ -12,7 +12,28 @@
           "package_name": "com.lavaring.app"
         }
       },
-      "oauth_client": [],
+      "oauth_client": [
+        {
+          "client_id": "483054026903-qcbitb2q6usmgho8rpf6vgtevj0vefm4.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.lavaring.app",
+            "certificate_hash": "57a02963450782e16f9917a0527ff6204ca0c587"
+          }
+        },
+        {
+          "client_id": "483054026903-u51h5mkk1p192tod13o15gffe17nlrrt.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.lavaring.app",
+            "certificate_hash": "270e91a98d7282385fc293515d93eb3c144eb184"
+          }
+        },
+        {
+          "client_id": "483054026903-3bpv99h8a9c0pd0guvhjhgl3pk4rd7e9.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
       "api_key": [
         {
           "current_key": "AIzaSyDWDHbO4ULxVZzhQX_aXkHtDnRMsxtmeaU"
@@ -20,7 +41,12 @@
       ],
       "services": {
         "appinvite_service": {
-          "other_platform_oauth_client": []
+          "other_platform_oauth_client": [
+            {
+              "client_id": "483054026903-3bpv99h8a9c0pd0guvhjhgl3pk4rd7e9.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
         }
       }
     }
