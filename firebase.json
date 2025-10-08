@@ -1,1 +1,28 @@
-{"flutter":{"platforms":{"android":{"default":{"projectId":"lava-ring","appId":"1:483054026903:android:c15db65281b59e0de869d2","fileOutput":"android/app/google-services.json"}},"dart":{"lib/firebase_options.dart":{"projectId":"lava-ring","configurations":{"android":"1:483054026903:android:c15db65281b59e0de869d2","web":"1:483054026903:web:c31dfc4016fa9bb6e869d2"}}}}}}
+{
+  "flutter": {
+    "platforms": {
+      "android": {
+        "default": {
+          "projectId": "lava-ring",
+          "appId": "1:483054026903:android:c15db65281b59e0de869d2",
+          "fileOutput": "android/app/google-services.json"
+        }
+      },
+      "dart": {
+        "lib/firebase_options.dart": {
+          "projectId": "lava-ring",
+          "configurations": {
+            "android": "1:483054026903:android:c15db65281b59e0de869d2",
+            "web": "1:483054026903:web:c31dfc4016fa9bb6e869d2"
+          }
+        }
+      }
+    }
+  },
+  "firestore": {
+    "database": "(default)",
+    "location": "nam5",
+    "rules": "firestore.rules",
+    "indexes": "firestore.indexes.json"
+  }
+}
