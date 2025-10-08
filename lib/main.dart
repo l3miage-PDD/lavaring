@@ -4,6 +4,7 @@ import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:provider/provider.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter_background_service/flutter_background_service.dart';
+import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 
 import 'firebase_options.dart';
 import 'screens/home_screen.dart';
@@ -26,16 +27,36 @@ void main() async {
 
 Future<void> initializeService() async {
   final service = FlutterBackgroundService();
+
+  const AndroidNotificationChannel channel = AndroidNotificationChannel(
+    notificationChannelId,
+    'LAVA RING TIMER',
+    description: 'This channel is used for the timer service.',
+    importance: Importance.low, 
+  );
+
+  final FlutterLocalNotificationsPlugin flutterLocalNotificationsPlugin =
+      FlutterLocalNotificationsPlugin();
+
+  await flutterLocalNotificationsPlugin
+      .resolvePlatformSpecificImplementation<
+          AndroidFlutterLocalNotificationsPlugin>()
+      ?.createNotificationChannel(channel);
+
   await service.configure(
     androidConfiguration: AndroidConfiguration(
       onStart: onStart,
       isForegroundMode: true,
+      autoStart: true,
       notificationChannelId: notificationChannelId,
-      initialNotificationTitle: 'Lava Ring Timer',
-      initialNotificationContent: 'Initializing',
+      initialNotificationTitle: 'Lava Ring en attente',
+      initialNotificationContent: 'Le minuteur est prêt à démarrer.',
       foregroundServiceNotificationId: notificationId,
     ),
-    iosConfiguration: IosConfiguration(),
+    iosConfiguration: IosConfiguration(
+      autoStart: true,
+      onForeground: onStart,
+    ),
   );
   service.startService();
 }

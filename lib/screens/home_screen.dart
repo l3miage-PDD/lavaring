@@ -2,10 +2,24 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../providers/timer_provider.dart';
 import '../services/auth_service.dart';
+import '../services/notification_service.dart'; // Import the service
 import '../widgets/timer_progress_arc.dart';
 
-class HomeScreen extends StatelessWidget {
+class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
+
+  @override
+  State<HomeScreen> createState() => _HomeScreenState();
+}
+
+class _HomeScreenState extends State<HomeScreen> {
+
+  @override
+  void initState() {
+    super.initState();
+    // Request notification permissions when the screen is first built.
+    Provider.of<NotificationService>(context, listen: false).requestPermissions();
+  }
 
   void _showGoalDialog(BuildContext context) {
     final timerProvider = Provider.of<TimerProvider>(context, listen: false);
@@ -21,7 +35,7 @@ class HomeScreen extends StatelessWidget {
               child: const Text('OK'),
               onPressed: () {
                 Navigator.of(context).pop();
-                timerProvider.acknowledgeGoal(); // Reset the flag
+                timerProvider.acknowledgeGoal();
               },
             ),
           ],
@@ -36,9 +50,7 @@ class HomeScreen extends StatelessWidget {
 
     return Consumer<TimerProvider>(
       builder: (context, timerProvider, child) {
-        // Show the dialog as a side-effect of the state change
         if (timerProvider.goalReached) {
-          // Use a post-frame callback to show the dialog after the build is complete
           WidgetsBinding.instance.addPostFrameCallback((_) {
             _showGoalDialog(context);
           });
@@ -60,7 +72,7 @@ class HomeScreen extends StatelessWidget {
               children: [
                 TimerProgressArc(
                   totalSeconds: timerProvider.totalSeconds,
-                  maxSeconds: 60, // For testing, 1 minute = full circle
+                  maxSeconds: 60,
                 ),
                 const SizedBox(height: 30),
                 Row(

@@ -11,23 +11,30 @@ class TimerProvider with ChangeNotifier {
   bool get goalReached => _goalReached;
 
   TimerProvider() {
-    FlutterBackgroundService().on('update').listen((data) {
-      if (data != null) {
-        final seconds = data['seconds'] as int? ?? 0;
-        _totalSeconds = seconds;
+    final service = FlutterBackgroundService();
 
-        if (seconds >= 60 && !_goalReached) {
+    // Listen for UI updates from the service
+    service.on('update').listen((data) {
+      if (data != null) {
+        _totalSeconds = data['seconds'] as int? ?? _totalSeconds;
+        _isRunning = data['isRunning'] as bool? ?? _isRunning;
+
+        if (_totalSeconds >= 60 && !_goalReached) {
           _goalReached = true;
         }
 
         notifyListeners();
       }
     });
+
+    // Request initial state from the service
+    service.invoke('get_status');
   }
 
   void startTimer() {
     FlutterBackgroundService().invoke('startTimer');
     _isRunning = true;
+    _goalReached = false; // Reset goal when starting
     notifyListeners();
   }
 
